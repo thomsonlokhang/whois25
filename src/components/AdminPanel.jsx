@@ -38,7 +38,6 @@ function AdminPanel() {
         ["周杰倫", "林俊傑"],
         ["張學友", "劉德華"],
         ["李小龍", "成龍"],
-        ["孫中山", "蔣介石"],
         ["特朗普", "拜登"],
         ["Bill Gates", "Elon Musk"],
         ["Taylor Swift", "Lady Gaga"],
