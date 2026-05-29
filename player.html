@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>查看我的角色 • 誰是二五仔</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&amp;family=Noto+Sans+HK:wght@400;500;700&amp;display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', 'Noto Sans HK', system-ui, -apple-system, sans-serif;
+        }
+        
+        .game-header {
+            background: linear-gradient(135deg, #e11d48, #be123c);
+        }
+        
+        .big-reveal {
+            animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .role-good {
+            background: linear-gradient(135deg, #166534, #14532d);
+            color: white;
+        }
+        
+        .role-traitor {
+            background: linear-gradient(135deg, #9f1239, #831843);
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <!-- Header -->
+    <div class="game-header text-white py-8 shadow-xl">
+        <div class="max-w-md mx-auto px-6 text-center">
+            <div class="flex justify-center mb-3">
+                <div class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                    <i class="fa-solid fa-user-secret text-4xl"></i>
+                </div>
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight">誰是二五仔</h1>
+            <p class="text-rose-200 mt-1">查看我的角色</p>
+        </div>
+    </div>
+
+    <div class="max-w-md mx-auto px-6 py-8">
+        
+        <!-- Load Game Code -->
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-7 mb-6">
+            <h2 class="font-bold text-xl mb-4 flex items-center gap-x-2">
+                <i class="fa-solid fa-qrcode text-emerald-400"></i>
+                <span>載入遊戲</span>
+            </h2>
+            
+            <!-- Camera Scan Button -->
+            <button onclick="startQRScan()" 
+                    class="w-full flex items-center justify-center gap-x-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-all py-4 rounded-2xl font-bold text-lg mb-4">
+                <i class="fa-solid fa-camera text-xl"></i>
+                <span>📷 用相機掃描 QR Code</span>
+            </button>
+            
+            <div class="text-center text-xs text-slate-500 mb-4">或手動輸入</div>
+            
+            <div class="flex gap-2">
+                <input type="text" id="loadCodeInput" placeholder="貼上短代碼或完整代碼..."
+                       class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500">
+                <button onclick="loadGameFromCode()" 
+                        class="px-5 bg-slate-700 hover:bg-slate-600 transition-colors rounded-2xl font-medium text-sm whitespace-nowrap">
+                    載入
+                </button>
+            </div>
+        </div>
+
+        <!-- Camera Scanner UI (hidden by default) -->
+        <div id="scanner-section" class="hidden bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <div class="font-medium flex items-center gap-x-2">
+                    <i class="fa-solid fa-camera text-emerald-400"></i>
+                    <span>掃描 QR Code</span>
+                </div>
+                <button onclick="stopQRScan()" class="text-sm px-4 py-1.5 bg-slate-800 rounded-xl">關閉</button>
+            </div>
+            
+            <div class="relative rounded-2xl overflow-hidden bg-black" style="aspect-ratio: 1 / 1; max-height: 320px;">
+                <video id="scanner-video" class="w-full h-full object-cover" autoplay playsinline></video>
+                <canvas id="scanner-canvas" class="hidden"></canvas>
+                
+                <!-- Scanning overlay -->
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div class="w-3/4 h-3/4 border-2 border-emerald-400 rounded-2xl"></div>
+                </div>
+            </div>
+            <p class="text-center text-xs text-slate-400 mt-3">請對準 Host 顯示嘅 QR Code</p>
+        </div>
+
+        <!-- Player Number -->
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-7">
+            <h2 class="font-bold text-xl mb-2 flex items-center gap-x-2">
+                <i class="fa-solid fa-hashtag text-emerald-400"></i>
+                <span>輸入你的編號</span>
+            </h2>
+            <p class="text-sm text-slate-400 mb-4">Host 會私下話你知你係邊個 Player</p>
+            
+            <div class="flex gap-3">
+                <input type="number" id="playerNumberInput" placeholder="例如：3" min="1"
+                       class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-3xl font-bold focus:outline-none focus:border-emerald-500 text-center">
+                <button onclick="revealMyRole()" 
+                        class="px-8 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-colors rounded-2xl font-bold text-lg">
+                    查看
+                </button>
+            </div>
+        </div>
+
+        <!-- Reveal Result -->
+        <div id="player-reveal" class="hidden mt-6">
+            <div id="reveal-content" class="big-reveal rounded-3xl p-1">
+                <!-- JS content injected here -->
+            </div>
+            
+            <div class="mt-4 flex gap-3">
+                <button onclick="hideReveal()" 
+                        class="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 rounded-2xl text-sm font-medium flex items-center justify-center gap-x-2">
+                    <i class="fa-solid fa-eye-slash"></i>
+                    <span>隱藏畫面</span>
+                </button>
+                <button onclick="revealMyRole()" 
+                        class="flex-1 py-3.5 bg-slate-700 hover:bg-slate-600 rounded-2xl text-sm font-medium">
+                    再睇一次
+                </button>
+            </div>
+        </div>
+
+        <!-- Warning -->
+        <div class="mt-8 text-center">
+            <div class="inline-flex items-center gap-x-2 text-xs bg-slate-900 border border-rose-900/50 px-5 py-3 rounded-2xl text-rose-400">
+                <i class="fa-solid fa-exclamation-triangle"></i>
+                <span class="font-medium">千祈唔好俾人見到你個畫面！</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let currentGame = null;
+
+        function loadGameFromCode() {
+            const codeInput = document.getElementById('loadCodeInput').value.trim();
+            if (!codeInput) {
+                alert("請輸入遊戲代碼");
+                return;
+            }
+            
+            try {
+                let loadedGame = null;
+                
+                // Try compact format first (new QR-friendly format): goodWord|traitorWord|traitorNums|total
+                if (codeInput.includes('|')) {
+                    const parts = codeInput.split('|');
+                    if (parts.length === 4) {
+                        const [goodWord, traitorWord, traitorStr, totalStr] = parts;
+                        const totalPlayers = parseInt(totalStr);
+                        const traitorNums = traitorStr ? traitorStr.split(',').map(n => parseInt(n)) : [];
+                        
+                        // Rebuild assignments
+                        const assignments = [];
+                        for (let i = 1; i <= totalPlayers; i++) {
+                            const isTraitor = traitorNums.includes(i);
+                            assignments.push({
+                                playerNum: i,
+                                name: `Player ${i}`,
+                                role: isTraitor ? "二五仔" : "好人",
+                                word: isTraitor ? traitorWord : goodWord
+                            });
+                        }
+                        
+                        loadedGame = {
+                            totalPlayers,
+                            numTraitors: traitorNums.length,
+                            goodWord,
+                            traitorWord,
+                            assignments,
+                            generatedAt: new Date().toISOString()
+                        };
+                    }
+                }
+                
+                // Fallback to old full JSON base64 format
+                if (!loadedGame) {
+                    const jsonStr = decodeURIComponent(escape(atob(codeInput)));
+                    loadedGame = JSON.parse(jsonStr);
+                }
+                
+                if (!loadedGame || !loadedGame.assignments || !loadedGame.totalPlayers) {
+                    throw new Error("無效嘅遊戲代碼");
+                }
+                
+                currentGame = loadedGame;
+                
+                // Success feedback
+                const toast = document.createElement('div');
+                toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-x-2 z-50 text-sm`;
+                toast.innerHTML = `
+                    <i class="fa-solid fa-check-double"></i>
+                    <span>遊戲資料載入成功！而家可以輸入編號</span>
+                `;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.style.transition = 'all 0.3s';
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 300);
+                }, 2200);
+                
+                document.getElementById('loadCodeInput').value = '';
+                
+            } catch (e) {
+                alert("遊戲代碼無效或已損壞！\n請確認係完整複製嘅代碼。");
+                console.error(e);
+            }
+        }
+
+        // ==================== QR Code Scanner ====================
+        let scanInterval = null;
+        let videoStream = null;
+
+        async function startQRScan() {
+            const scannerSection = document.getElementById('scanner-section');
+            const video = document.getElementById('scanner-video');
+            
+            scannerSection.classList.remove('hidden');
+            
+            try {
+                // Request camera
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" } // Prefer back camera
+                });
+                
+                video.srcObject = videoStream;
+                video.setAttribute("playsinline", true);
+                video.play();
+                
+                // Start scanning loop
+                const canvas = document.getElementById('scanner-canvas');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                
+                scanInterval = setInterval(() => {
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        canvas.height = video.videoHeight;
+                        canvas.width = video.videoWidth;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: "dontInvert",
+                        });
+                        
+                        if (code) {
+                            // Successfully scanned
+                            stopQRScan();
+                            handleScannedCode(code.data);
+                        }
+                    }
+                }, 300); // Scan every 300ms
+                
+            } catch (err) {
+                alert("無法開啟相機。請確認已授權相機權限，或使用手動輸入。");
+                console.error(err);
+                stopQRScan();
+            }
+        }
+        
+        function stopQRScan() {
+            const scannerSection = document.getElementById('scanner-section');
+            const video = document.getElementById('scanner-video');
+            
+            if (scanInterval) {
+                clearInterval(scanInterval);
+                scanInterval = null;
+            }
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            video.srcObject = null;
+            scannerSection.classList.add('hidden');
+        }
+        
+        function handleScannedCode(scannedText) {
+            // Auto load the scanned code
+            document.getElementById('loadCodeInput').value = scannedText;
+            
+            // Try to load it
+            setTimeout(() => {
+                loadGameFromCode();
+                
+                // Show success toast
+                setTimeout(() => {
+                    const toast = document.createElement('div');
+                    toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-x-2 z-50 text-sm`;
+                    toast.innerHTML = `
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>掃描成功！請輸入你嘅 Player 編號</span>
+                    `;
+                    document.body.appendChild(toast);
+                    
+                    setTimeout(() => {
+                        toast.style.transition = 'all 0.3s';
+                        toast.style.opacity = '0';
+                        setTimeout(() => toast.remove(), 300);
+                    }, 2500);
+                }, 600);
+            }, 100);
+        }
+
+        function revealMyRole() {
+            if (!currentGame) {
+                alert("未有遊戲資料！請先貼上 Host 畀你嘅遊戲代碼，然後按「載入」。");
+                return;
+            }
+            
+            const input = document.getElementById('playerNumberInput');
+            const playerNum = parseInt(input.value);
+            
+            if (!playerNum || playerNum < 1 || playerNum > currentGame.totalPlayers) {
+                alert(`請輸入有效嘅 Player 編號（1 至 ${currentGame.totalPlayers}）`);
+                return;
+            }
+            
+            const assignment = currentGame.assignments.find(a => a.playerNum === playerNum);
+            if (!assignment) {
+                alert("搵唔到呢個玩家！");
+                return;
+            }
+            
+            const revealDiv = document.getElementById('player-reveal');
+            const content = document.getElementById('reveal-content');
+            
+            const isGood = assignment.role === "好人";
+            const roleClass = isGood ? 'role-good' : 'role-traitor';
+            const icon = isGood ? 'fa-user-friends' : 'fa-user-secret';
+            const roleText = isGood ? '好人' : '二五仔';
+            const roleDesc = isGood 
+                ? '你係普通好人，要描述題目但唔可以講出嚟，同時要搵出二五仔！' 
+                : '你係二五仔！盡量唔好俾人發現，描述時要混淆視聽。';
+            
+            content.innerHTML = `
+                <div class="${roleClass} rounded-3xl p-8 text-center">
+                    <div class="flex justify-center mb-4">
+                        <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                            <i class="fa-solid ${icon} text-4xl"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="text-sm tracking-[3px] opacity-75 mb-1">你係</div>
+                    <div class="text-6xl font-black mb-2 tracking-tighter">${roleText}</div>
+                    
+                    <div class="my-6 border-t border-white/20"></div>
+                    
+                    <div class="text-sm opacity-75 mb-1">你嘅題目係</div>
+                    <div class="text-5xl font-black tracking-tight mb-6">${assignment.word}</div>
+                    
+                    <div class="text-xs opacity-70 max-w-[260px] mx-auto leading-relaxed">
+                        ${roleDesc}
+                    </div>
+                </div>
+            `;
+            
+            revealDiv.classList.remove('hidden');
+            
+            setTimeout(() => {
+                input.value = '';
+            }, 600);
+        }
+
+        function hideReveal() {
+            document.getElementById('player-reveal').classList.add('hidden');
+            document.getElementById('playerNumberInput').focus();
+        }
+
+        // Enter key support
+        function setupKeyboard() {
+            const playerInput = document.getElementById('playerNumberInput');
+            if (playerInput) {
+                playerInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        revealMyRole();
+                    }
+                });
+            }
+            
+            const codeInput = document.getElementById('loadCodeInput');
+            if (codeInput) {
+                codeInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        loadGameFromCode();
+                    }
+                });
+            }
+        }
+
+        window.onload = function() {
+            setupKeyboard();
+            // Auto focus on code input
+            setTimeout(() => {
+                document.getElementById('loadCodeInput').focus();
+            }, 500);
+        }
+    </script>
+</body>
+</html>
