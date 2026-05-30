@@ -95,8 +95,8 @@ function AdminPanel() {
         }
 
         // 優先使用 Firebase 玩家列表
-        let finalPlayers = players.length > 0 
-            ? players.map(p => p.name) 
+        let finalPlayers = players.length > 0
+            ? players.map(p => p.name)
             : (playerNames.trim() ? playerNames.split('\n').map(n => n.trim()).filter(Boolean) : []);
 
         while (finalPlayers.length < totalPlayers) {
@@ -164,34 +164,71 @@ function AdminPanel() {
                 </Box>
             </Box>
 
-            {/* 即時玩家列表 */}
+            {/* ===== 即時玩家列表（優化版） ===== */}
             <Paper sx={{ p: 3, borderRadius: 4, mb: 4 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">已加入玩家 ({players.length})</Typography>
-                    <Chip label={players.length > 0 ? "即時更新中" : "等待玩家加入"} 
-                          color={players.length > 0 ? "success" : "default"} size="small" />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="h6">
+                            已加入玩家
+                        </Typography>
+                        <Chip
+                            label={`${players.length} / ${totalPlayers}`}
+                            color={players.length >= totalPlayers ? "success" : "primary"}
+                            size="small"
+                        />
+                    </Box>
+
+                    <Chip
+                        label={players.length > 0 ? "即時更新中" : "等待玩家加入"}
+                        color={players.length > 0 ? "success" : "default"}
+                        size="small"
+                        variant="outlined"
+                    />
                 </Box>
 
                 {players.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                        暫時冇玩家加入
-                    </Typography>
+                    <Box sx={{
+                        py: 4,
+                        textAlign: 'center',
+                        bgcolor: 'action.hover',
+                        borderRadius: 2
+                    }}>
+                        <Typography variant="body1" color="text.secondary">
+                            暫時冇玩家加入
+                        </Typography>
+                        <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+                            請玩家喺 Player 頁面輸入名字加入遊戲
+                        </Typography>
+                    </Box>
                 ) : (
                     <TableContainer>
                         <Table size="small">
                             <TableHead>
                                 <TableRow>
-                                    <TableCell>#</TableCell>
+                                    <TableCell sx={{ width: 60 }}>#</TableCell>
                                     <TableCell>玩家名字</TableCell>
-                                    <TableCell>加入時間</TableCell>
+                                    <TableCell align="right">加入時間</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {players.map((player, index) => (
-                                    <TableRow key={player.id}>
-                                        <TableCell>{index + 1}</TableCell>
-                                        <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
-                                        <TableCell>{new Date(player.joinedAt).toLocaleTimeString('zh-HK')}</TableCell>
+                                    <TableRow key={player.id} hover>
+                                        <TableCell>
+                                            <Chip
+                                                label={index + 1}
+                                                size="small"
+                                                color="primary"
+                                                variant="outlined"
+                                            />
+                                        </TableCell>
+                                        <TableCell sx={{ fontWeight: 500 }}>
+                                            {player.name}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="body2" color="text.secondary">
+                                                {new Date(player.joinedAt).toLocaleTimeString('zh-HK')}
+                                            </Typography>
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
