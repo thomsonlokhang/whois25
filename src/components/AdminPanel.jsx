@@ -144,19 +144,30 @@ function AdminPanel() {
     return (
         <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
             {/* Header */}
-            <Box sx={{ mb: 5 }}>
+            <Box sx={{ mb: 5, display: 'flex', justifyContent: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 1.5 }}>
+                    {/* Icon */}
                     <Box sx={{
-                        width: 52, height: 52, borderRadius: '16px',
+                        width: 52,
+                        height: 52,
+                        borderRadius: '16px',
                         background: 'linear-gradient(135deg, #6750A4 0%, #9A7FCF 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'white', fontSize: '1.6rem', fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '1.6rem',
+                        fontWeight: 700,
                         boxShadow: '0 4px 20px rgba(103, 80, 164, 0.35)'
                     }}>
                         25
                     </Box>
+
+                    {/* 文字 */}
                     <Box>
-                        <Typography variant="h4" fontWeight={700}>Admin 控制台</Typography>
+                        <Typography variant="h4" fontWeight={700}>
+                            Admin 控制台
+                        </Typography>
                         <Typography variant="body1" color="text.secondary">
                             設定遊戲參數後生成分配，然後將短代碼或 QR Code 分享畀玩家
                         </Typography>
