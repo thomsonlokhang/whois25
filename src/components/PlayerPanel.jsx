@@ -1,5 +1,5 @@
 import { database } from '../firebase';
-import { ref, push, set } from 'firebase/database';
+import { ref, push, set, onDisconnect } from 'firebase/database';
 import { useState, useRef, useEffect } from 'react'
 import RoleReveal from './RoleReveal'
 import { motion } from 'framer-motion'
@@ -25,7 +25,7 @@ function PlayerPanel() {
   const streamRef = useRef(null)
   const scanIntervalRef = useRef(null)
 
-  // 加入遊戲（輸入名字）
+  // 加入遊戲 + 設定自動移除
   const joinGame = async () => {
     if (!playerName.trim()) {
       alert('請輸入你嘅名字')
@@ -36,13 +36,17 @@ function PlayerPanel() {
       const playersRef = ref(database, 'rooms/main-room/players')
       const newPlayerRef = push(playersRef)
 
+      // 寫入玩家資料
       await set(newPlayerRef, {
         name: playerName.trim(),
         joinedAt: Date.now()
       })
 
+      // ===== 使用 onDisconnect() 自動移除（重新整理/關閉頁面時） =====
+      onDisconnect(newPlayerRef).remove();
+
       setHasJoined(true)
-      alert('成功加入遊戲！請掃描 QR Code 或等待 Admin 生成')
+      alert('成功加入遊戲！重新整理或關閉頁面會自動離開')
     } catch (error) {
       console.error('加入失敗:', error)
       alert('加入失敗，請重試')
@@ -52,8 +56,9 @@ function PlayerPanel() {
   // 載入遊戲（從 Firebase）
   const loadGameFromFirebase = async (roomId = 'main-room') => {
     try {
+      const { get } = await import('firebase/database')
       const gameRef = ref(database, `rooms/${roomId}/game`)
-      const snapshot = await import('firebase/database').then(mod => mod.get(gameRef))
+      const snapshot = await get(gameRef)
 
       if (snapshot.exists()) {
         const gameData = snapshot.val()
@@ -61,7 +66,7 @@ function PlayerPanel() {
 
         // 載入玩家列表
         const playersRef = ref(database, `rooms/${roomId}/players`)
-        const playersSnapshot = await import('firebase/database').then(mod => mod.get(playersRef))
+        const playersSnapshot = await get(playersRef)
         if (playersSnapshot.exists()) {
           const data = playersSnapshot.val()
           const list = Object.keys(data).map(key => ({ id: key, ...data[key] }))
@@ -76,22 +81,24 @@ function PlayerPanel() {
     }
   }
 
-  // 玩家選擇自己
+  // 玩家選擇自己後顯示角色
   const selectPlayer = (selectedPlayer) => {
     if (!game) return
     const roleInfo = game.assignments.find(a => a.name === selectedPlayer.name)
     if (roleInfo) {
       setMyRole(roleInfo)
     } else {
-      alert('找不到你嘅角色')
+      alert('找不到你嘅角色資料')
     }
   }
 
-  // 相機掃描
+  // 開始相機掃描
   const startScanning = async () => {
     try {
       setIsScanning(true)
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      })
       streamRef.current = stream
       if (videoRef.current) {
         videoRef.current.srcObject = stream
@@ -127,7 +134,9 @@ function PlayerPanel() {
 
   const stopScanning = () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
-    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop())
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+    }
     setIsScanning(false)
   }
 
@@ -164,7 +173,7 @@ function PlayerPanel() {
 
           {hasJoined && (
             <Typography variant="body2" color="success.main" sx={{ mb: 2 }}>
-              ✅ 你已成功加入遊戲
+              ✅ 你已成功加入遊戲（重新整理會自動離開）
             </Typography>
           )}
 
