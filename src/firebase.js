@@ -1,12 +1,8 @@
-// Import the functions you need from the SDKs you need
+// src/firebase.js
 import { initializeApp } from "firebase/app";
-// import { getAnalytics } from "firebase/analytics";
 import { getDatabase } from "firebase/database";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// 請確保以下係你自己嘅 Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyDjffbR_es9_oOmWgwFwCzk-oC6I5uRDz0",
   authDomain: "whois25-game.firebaseapp.com",
@@ -14,12 +10,11 @@ const firebaseConfig = {
   projectId: "whois25-game",
   storageBucket: "whois25-game.firebasestorage.app",
   messagingSenderId: "974947597581",
-  appId: "1:974947597581:web:f96e537bdef1a89193c444",
-  measurementId: "G-QQKSDTJZJJ"
+  appId: "1:974947597581:web:f96e537bdef1a89193c444"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
+// 只 export database（唔使 analytics）
 export const database = getDatabase(app);
