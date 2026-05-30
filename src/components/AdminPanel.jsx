@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { database } from '../firebase';
+import { ref, onValue, off } from 'firebase/database';
+import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import {
     Box, Typography, TextField, Button, Paper, Table, TableBody, TableCell,
@@ -14,16 +16,34 @@ function AdminPanel() {
     const [traitorWord, setTraitorWord] = useState('香蕉')
     const [game, setGame] = useState(null)
     const [qrCodeUrl, setQrCodeUrl] = useState('')
+    const [players, setPlayers] = useState([]);
 
-    // ===== 隨機題目 =====
+    // ===== 即時監聽玩家列表 =====
+    useEffect(() => {
+        const playersRef = ref(database, 'rooms/main-room/players');
+
+        const unsubscribe = onValue(playersRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const playersList = Object.keys(data).map(key => ({
+                    id: key,
+                    ...data[key]
+                }));
+                setPlayers(playersList);
+            } else {
+                setPlayers([]);
+            }
+        });
+
+        return () => off(playersRef, 'value', unsubscribe);
+    }, []);
+
+    // ===== 題目庫 =====
     const wordPairs = [
-        // ===== 聖經人物 =====
         ["耶穌", "摩西"],
         ["彼得", "保羅"],
         ["亞當", "挪亞"],
         ["約翰", "雅各"],
-
-        // ===== 香港地名 =====
         ["維多利亞港", "星光大道"],
         ["尖沙咀", "中環"],
         ["銅鑼灣", "灣仔"],
@@ -33,26 +53,18 @@ function AdminPanel() {
         ["太平山頂", "山頂"],
         ["中環", "西環"],
         ["香港大學", "科技大學"],
-
-        // ===== 中外名人 =====
         ["周杰倫", "林俊傑"],
         ["張學友", "劉德華"],
         ["李小龍", "成龍"],
         ["特朗普", "拜登"],
         ["Steve Jobs", "Elon Musk"],
-        ["Stray Kids", "BTS"],   
-
-        // ===== 歌曲 =====
+        ["Stray Kids", "BTS"],
         ["起風了", "光年之外"],
         ["稻香", "聽見下雨的聲音"],
         ["APT.", "Flower"],
         ["任性", "如果可以"],
         ["蒲公英的約定", "聽媽媽的話"],
         ["告白氣球", "晴天"],
-
-        // ===== 物件類 =====
-
-        // 食物類
         ["蘋果", "香蕉"],
         ["漢堡", "披薩"],
         ["壽司", "拉麵"],
@@ -60,40 +72,28 @@ function AdminPanel() {
         ["紅酒", "啤酒"],
         ["巧克力", "糖果"],
         ["米飯", "麵條"],
-
-        // 樂器類
         ["鋼琴", "吉他"],
         ["小提琴", "大提琴"],
         ["鼓", "電子鼓"],
         ["口琴", "笛子"],
-
-        // 交通工具類
         ["飛機", "火車"],
         ["汽車", "巴士"],
         ["船", "潛水艇"],
         ["單車", "電單車"],
-
-        // 日常用品類
         ["書本", "筆記"],
         ["手機", "平板"],
         ["眼鏡", "太陽眼鏡"],
         ["雨傘", "遮陽傘"],
         ["牙刷", "牙膏"],
         ["拖鞋", "運動鞋"],
-
-        // 電子產品類
         ["iPhone", "Android"],
         ["AirPods", "Headphones"],
         ["電腦", "筆記型電腦"],
         ["電視", "投影機"],
-
-        // 運動用品類
         ["足球", "籃球"],
         ["羽毛球", "網球"],
         ["泳鏡", "蛙鏡"],
         ["啞鈴", "槓鈴"],
-
-        // 其他物件
         ["山", "海"],
         ["太陽", "月亮"],
         ["紅色", "藍色"],
@@ -105,15 +105,14 @@ function AdminPanel() {
     // ===== 隨機選詞功能 =====
     const randomizeTopic = () => {
         const randomIndex = Math.floor(Math.random() * wordPairs.length);
-        const pair = wordPairs[randomIndex];           // 例如 ["耶穌", "摩西"]
+        const pair = wordPairs[randomIndex];
 
-        // 隨機決定邊個係好人、邊個係二五仔
         if (Math.random() < 0.5) {
-            setGoodWord(pair[0]);       // 好人 = 左邊
-            setTraitorWord(pair[1]);    // 二五仔 = 右邊
+            setGoodWord(pair[0]);
+            setTraitorWord(pair[1]);
         } else {
-            setGoodWord(pair[1]);       // 好人 = 右邊
-            setTraitorWord(pair[0]);    // 二五仔 = 左邊
+            setGoodWord(pair[1]);
+            setTraitorWord(pair[0]);
         }
     };
 
@@ -197,6 +196,41 @@ function AdminPanel() {
                 </Box>
             </Box>
 
+            {/* ===== 即時玩家列表 ===== */}
+            <Paper sx={{ p: 3, borderRadius: 4, mb: 4 }}>
+                <Typography variant="h6" gutterBottom>
+                    已加入玩家 ({players.length})
+                </Typography>
+
+                {players.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                        暫時冇玩家加入
+                    </Typography>
+                ) : (
+                    <TableContainer>
+                        <Table size="small">
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>名字</TableCell>
+                                    <TableCell>加入時間</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {players.map((player) => (
+                                    <TableRow key={player.id}>
+                                        <TableCell>{player.name}</TableCell>
+                                        <TableCell>
+                                            {new Date(player.joinedAt).toLocaleTimeString()}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                )}
+            </Paper>
+
+            {/* 設定區域 */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
                 {/* 遊戲設定 */}
                 <Grid item xs={12} md={5}>
@@ -205,7 +239,8 @@ function AdminPanel() {
                         whileHover={{ y: -4 }}
                         transition={{ duration: 0.2 }}
                         sx={{ p: 3, borderRadius: 4, height: '100%' }}
-                    >            <Typography variant="h6" gutterBottom>遊戲設定</Typography>
+                    >
+                        <Typography variant="h6" gutterBottom>遊戲設定</Typography>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                             <TextField label="總玩家人數" type="number" value={totalPlayers} onChange={(e) => setTotalPlayers(parseInt(e.target.value))} fullWidth />
                             <TextField label="二五仔數量" type="number" value={numTraitors} onChange={(e) => setNumTraitors(parseInt(e.target.value))} fullWidth />
@@ -221,7 +256,8 @@ function AdminPanel() {
                         whileHover={{ y: -4 }}
                         transition={{ duration: 0.2 }}
                         sx={{ p: 3, borderRadius: 4, height: '100%' }}
-                    >                        <Typography variant="h6" gutterBottom>題目設定</Typography>
+                    >
+                        <Typography variant="h6" gutterBottom>題目設定</Typography>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                             <TextField label="好人題目" value={goodWord} onChange={(e) => setGoodWord(e.target.value)} fullWidth />
                             <TextField label="二五仔題目" value={traitorWord} onChange={(e) => setTraitorWord(e.target.value)} fullWidth />
@@ -255,7 +291,8 @@ function AdminPanel() {
                     whileHover={{ y: -4 }}
                     transition={{ duration: 0.2 }}
                     sx={{ p: 3, borderRadius: 4 }}
-                >                    <Typography variant="h6" gutterBottom>遊戲已生成！</Typography>
+                >
+                    <Typography variant="h6" gutterBottom>遊戲已生成！</Typography>
 
                     <Grid container spacing={3}>
                         <Grid item xs={12} md={7}>
