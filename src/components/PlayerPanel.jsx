@@ -1,5 +1,5 @@
 import { database } from '../firebase';
-import { ref, onValue, off, get } from 'firebase/database';
+import { ref, push, set } from 'firebase/database';
 import { useState, useRef, useEffect } from 'react'
 import RoleReveal from './RoleReveal'
 import { motion } from 'framer-motion'
@@ -10,9 +10,12 @@ import {
 
 function PlayerPanel() {
   const [shortCode, setShortCode] = useState('')
+  const [playerNum, setPlayerNum] = useState('')
   const [game, setGame] = useState(null)
   const [myRole, setMyRole] = useState(null)
   const [isScanning, setIsScanning] = useState(false)
+  
+  // 玩家名字相關
   const [playerName, setPlayerName] = useState('')
   const [hasJoined, setHasJoined] = useState(false)
   const [playersList, setPlayersList] = useState([])
@@ -22,124 +25,152 @@ function PlayerPanel() {
   const streamRef = useRef(null)
   const scanIntervalRef = useRef(null)
 
-  // 載入遊戲資料（從 Firebase）
+  // 加入遊戲（輸入名字）
+  const joinGame = async () => {
+    if (!playerName.trim()) {
+      alert('請輸入你嘅名字')
+      return
+    }
+
+    try {
+      const playersRef = ref(database, 'rooms/main-room/players')
+      const newPlayerRef = push(playersRef)
+
+      await set(newPlayerRef, {
+        name: playerName.trim(),
+        joinedAt: Date.now()
+      })
+
+      setHasJoined(true)
+      alert('成功加入遊戲！請掃描 QR Code 或等待 Admin 生成')
+    } catch (error) {
+      console.error('加入失敗:', error)
+      alert('加入失敗，請重試')
+    }
+  }
+
+  // 載入遊戲（從 Firebase）
   const loadGameFromFirebase = async (roomId = 'main-room') => {
     try {
-      const gameRef = ref(database, `rooms/${roomId}/game`);
-      const snapshot = await get(gameRef);
+      const gameRef = ref(database, `rooms/${roomId}/game`)
+      const snapshot = await import('firebase/database').then(mod => mod.get(gameRef))
 
       if (snapshot.exists()) {
-        const gameData = snapshot.val();
-        setGame(gameData);
+        const gameData = snapshot.val()
+        setGame(gameData)
 
-        // 同時載入玩家列表
-        const playersRef = ref(database, `rooms/${roomId}/players`);
-        const playersSnapshot = await get(playersRef);
+        // 載入玩家列表
+        const playersRef = ref(database, `rooms/${roomId}/players`)
+        const playersSnapshot = await import('firebase/database').then(mod => mod.get(playersRef))
         if (playersSnapshot.exists()) {
-          const playersData = playersSnapshot.val();
-          const list = Object.keys(playersData).map(key => ({
-            id: key,
-            ...playersData[key]
-          }));
-          setPlayersList(list);
+          const data = playersSnapshot.val()
+          const list = Object.keys(data).map(key => ({ id: key, ...data[key] }))
+          setPlayersList(list)
         }
       } else {
-        alert('遊戲尚未生成，請等待 Admin 生成後再掃描');
+        alert('遊戲尚未生成')
       }
     } catch (error) {
-      console.error('載入遊戲失敗:', error);
-      alert('載入遊戲失敗');
+      console.error(error)
+      alert('載入遊戲失敗')
     }
-  };
+  }
 
-  // 玩家選擇自己後直接顯示角色
+  // 玩家選擇自己
   const selectPlayer = (selectedPlayer) => {
-    if (!game) return;
-
-    const roleInfo = game.assignments.find(a => a.name === selectedPlayer.name);
+    if (!game) return
+    const roleInfo = game.assignments.find(a => a.name === selectedPlayer.name)
     if (roleInfo) {
-      setMyRole(roleInfo);
+      setMyRole(roleInfo)
     } else {
-      alert('找不到你嘅角色資料');
+      alert('找不到你嘅角色')
     }
-  };
+  }
 
-  // 開始相機掃描
+  // 相機掃描
   const startScanning = async () => {
     try {
-      setIsScanning(true);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      streamRef.current = stream;
+      setIsScanning(true)
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      streamRef.current = stream
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
       }
 
       scanIntervalRef.current = setInterval(() => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas || video.readyState !== 4) return;
+        const video = videoRef.current
+        const canvas = canvasRef.current
+        if (!video || !canvas || video.readyState !== 4) return
 
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const code = jsQR(imageData.data, imageData.width, imageData.height)
 
         if (code) {
-          // 掃描到 QR Code 後
           if (code.data === 'main-room') {
-            loadGameFromFirebase('main-room');
-          } else {
-            // 兼容舊短代碼
-            setShortCode(code.data);
-            // loadGame(code.data); // 如果需要兼容舊版可打開
+            loadGameFromFirebase('main-room')
           }
-          stopScanning();
+          stopScanning()
         }
-      }, 400);
+      }, 400)
     } catch (err) {
-      alert('無法開啟相機');
-      setIsScanning(false);
-      stopScanning();
+      alert('無法開啟相機')
+      setIsScanning(false)
+      stopScanning()
     }
-  };
+  }
 
   const stopScanning = () => {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    setIsScanning(false);
-  };
+    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
+    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop())
+    setIsScanning(false)
+  }
 
   useEffect(() => {
-    return () => stopScanning();
-  }, []);
+    return () => stopScanning()
+  }, [])
 
   return (
     <Box sx={{ maxWidth: 480, mx: 'auto' }}>
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Typography variant="h4" fontWeight={700} gutterBottom>
-          玩家查看角色
-        </Typography>
-      </Box>
+      <Typography variant="h4" fontWeight={700} textAlign="center" gutterBottom>
+        玩家查看角色
+      </Typography>
 
       {!myRole ? (
         <Paper component={motion.div} whileHover={{ y: -3 }} sx={{ p: 3, borderRadius: 4 }}>
           
-          {/* 玩家已加入提示 */}
+          {/* 輸入名字區域 */}
+          {!hasJoined && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>請先輸入你嘅名字</Typography>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <TextField
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="例如：小明"
+                  fullWidth
+                />
+                <Button variant="contained" onClick={joinGame}>
+                  加入遊戲
+                </Button>
+              </Box>
+            </Box>
+          )}
+
           {hasJoined && (
             <Typography variant="body2" color="success.main" sx={{ mb: 2 }}>
               ✅ 你已成功加入遊戲
             </Typography>
           )}
 
-          {/* 相機掃描 */}
+          <Divider sx={{ my: 2 }} />
+
+          {/* 掃描 QR Code */}
           <Button
             variant="contained"
             color="success"
@@ -158,22 +189,16 @@ function PlayerPanel() {
             </Box>
           )}
 
-          <Divider sx={{ my: 2 }} />
-
-          {/* 顯示玩家列表讓玩家選擇自己 */}
+          {/* 玩家列表選擇 */}
           {game && playersList.length > 0 && (
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                請選擇你係邊個玩家
-              </Typography>
-              <Paper variant="outlined" sx={{ maxHeight: 300, overflow: 'auto' }}>
-                <List>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>請選擇你係邊個玩家</Typography>
+              <Paper variant="outlined" sx={{ maxHeight: 250, overflow: 'auto' }}>
+                <List dense>
                   {playersList.map((player, index) => (
                     <ListItem key={player.id} disablePadding>
                       <ListItemButton onClick={() => selectPlayer(player)}>
-                        <ListItemText 
-                          primary={`${index + 1}. ${player.name}`} 
-                        />
+                        <ListItemText primary={`${index + 1}. ${player.name}`} />
                       </ListItemButton>
                     </ListItem>
                   ))}
@@ -185,16 +210,9 @@ function PlayerPanel() {
           {/* 手動輸入短代碼（兼容） */}
           {!game && (
             <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                或手動輸入短代碼
-              </Typography>
+              <Typography variant="subtitle2" gutterBottom>或手動輸入短代碼</Typography>
               <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <TextField
-                  value={shortCode}
-                  onChange={(e) => setShortCode(e.target.value)}
-                  placeholder="輸入短代碼"
-                  fullWidth
-                />
+                <TextField value={shortCode} onChange={(e) => setShortCode(e.target.value)} fullWidth />
                 <Button variant="contained" onClick={() => loadGameFromFirebase('main-room')}>
                   載入
                 </Button>
@@ -203,17 +221,14 @@ function PlayerPanel() {
           )}
         </Paper>
       ) : (
-        <RoleReveal
-          roleInfo={myRole}
-          onReset={() => {
-            setMyRole(null);
-            setGame(null);
-            setPlayersList([]);
-          }}
-        />
+        <RoleReveal roleInfo={myRole} onReset={() => {
+          setMyRole(null)
+          setGame(null)
+          setPlayersList([])
+        }} />
       )}
     </Box>
-  );
+  )
 }
 
 export default PlayerPanel
