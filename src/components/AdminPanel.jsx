@@ -175,8 +175,13 @@ function AdminPanel() {
                 </Box>
             </Box>
 
-            {/* ===== 即時玩家列表（優化版） ===== */}
-            <Paper sx={{ p: 3, borderRadius: 4, mb: 4 }}>
+            {/* ===== 即時玩家列表（優化版 + hover 效果） ===== */}
+            <Paper
+                component={motion.div}
+                whileHover={{ y: -4 }}
+                transition={{ duration: 0.2 }}
+                sx={{ p: 3, borderRadius: 4, mb: 4 }}
+            >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Typography variant="h6">
