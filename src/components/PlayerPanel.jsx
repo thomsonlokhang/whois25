@@ -1,102 +1,131 @@
-import { database } from '../firebase';
-import { ref, push, set, onDisconnect } from 'firebase/database';
+import { database } from '../firebase'
+import { ref, set, onDisconnect, onValue } from 'firebase/database'
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import RoleReveal from './RoleReveal'
+import HowToPlay from './HowToPlay'
 import { motion } from 'framer-motion'
 import jsQR from 'jsqr'
 import {
-  Box, Typography, TextField, Button, Paper, Divider, List, ListItem, ListItemButton, ListItemText
+  Alert,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
 } from '@mui/material'
+import { getOrCreatePlayerId, isValidRoomCode, normalizeRoomCode, parseRoomFromQr } from '../utils/room'
 
 function PlayerPanel() {
-  const [shortCode, setShortCode] = useState('')
-  const [playerNum, setPlayerNum] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlRoom = normalizeRoomCode(searchParams.get('room') || '')
+  const storedRoom = normalizeRoomCode(localStorage.getItem('whois25_roomCode') || '')
+  const [roomInput, setRoomInput] = useState(undefined)
+  const roomCode = roomInput !== undefined ? roomInput : (urlRoom || storedRoom)
+  const [playerName, setPlayerName] = useState(() => localStorage.getItem('whois25_playerName') || '')
+  const [playerId] = useState(() => getOrCreatePlayerId())
+  const [hasJoined, setHasJoined] = useState(false)
   const [game, setGame] = useState(null)
+  const [playersList, setPlayersList] = useState([])
   const [myRole, setMyRole] = useState(null)
   const [isScanning, setIsScanning] = useState(false)
-
-  // 玩家名字相關
-  const [playerName, setPlayerName] = useState('')
-  const [hasJoined, setHasJoined] = useState(false)
-  const [playersList, setPlayersList] = useState([])
+  const [error, setError] = useState('')
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
   const scanIntervalRef = useRef(null)
 
-  // 加入遊戲 + 自動移除
-  const joinGame = async () => {
-    if (!playerName.trim()) {
-      alert('請輸入你嘅名字')
+  const stopScanning = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current)
+      scanIntervalRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    setIsScanning(false)
+  }
+
+  useEffect(() => () => stopScanning(), [])
+
+  useEffect(() => {
+    if (!hasJoined || !isValidRoomCode(roomCode)) return undefined
+
+    const playersRef = ref(database, `rooms/${roomCode}/players`)
+    const unsubPlayers = onValue(playersRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const list = Object.keys(data).map((id) => ({ id, ...data[id] }))
+        list.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
+        setPlayersList(list)
+      } else {
+        setPlayersList([])
+      }
+    })
+
+    const gameRef = ref(database, `rooms/${roomCode}/game`)
+    const unsubGame = onValue(gameRef, (snapshot) => {
+      const next = snapshot.exists() ? snapshot.val() : null
+      setGame(next)
+      if (!next) {
+        setMyRole(null)
+        return
+      }
+      const mine = (next.assignments || []).find((a) => a.playerId === playerId)
+      if (!mine) setMyRole(null)
+    })
+
+    return () => {
+      unsubPlayers()
+      unsubGame()
+    }
+  }, [hasJoined, roomCode, playerId])
+
+  const joinGame = async (codeOverride) => {
+    const code = normalizeRoomCode(codeOverride || roomCode)
+    const name = playerName.trim()
+    if (!name) {
+      setError('請輸入你嘅名字')
+      return
+    }
+    if (!isValidRoomCode(code)) {
+      setError('請輸入 4 位房間碼，或掃描 Host 嘅 QR')
       return
     }
 
     try {
-      const playersRef = ref(database, 'rooms/main-room/players')
-      const newPlayerRef = push(playersRef)
-
-      await set(newPlayerRef, {
-        name: playerName.trim(),
-        joinedAt: Date.now()
+      setError('')
+      const playerRef = ref(database, `rooms/${code}/players/${playerId}`)
+      await set(playerRef, {
+        name,
+        joinedAt: Date.now(),
       })
+      onDisconnect(playerRef).remove()
 
-      // 設定斷線時自動移除
-      onDisconnect(newPlayerRef).remove()
-
+      setRoomInput(code)
       setHasJoined(true)
-      alert('成功加入遊戲！重新整理或關閉頁面會自動離開')
-    } catch (error) {
-      console.error('加入失敗:', error)
-      alert('加入失敗，請重試')
+      localStorage.setItem('whois25_playerName', name)
+      localStorage.setItem('whois25_roomCode', code)
+      setSearchParams({ room: code }, { replace: true })
+    } catch (err) {
+      console.error('加入失敗:', err)
+      setError('加入失敗，請檢查房間碼同網絡')
     }
   }
 
-  // 從 Firebase 載入遊戲
-  const loadGameFromFirebase = async (roomId = 'main-room') => {
-    try {
-      const { get } = await import('firebase/database')
-      const gameRef = ref(database, `rooms/${roomId}/game`)
-      const snapshot = await get(gameRef)
-
-      if (snapshot.exists()) {
-        const gameData = snapshot.val()
-        setGame(gameData)
-
-        // 載入玩家列表
-        const playersRef = ref(database, `rooms/${roomId}/players`)
-        const playersSnapshot = await get(playersRef)
-        if (playersSnapshot.exists()) {
-          const data = playersSnapshot.val()
-          const list = Object.keys(data).map(key => ({ id: key, ...data[key] }))
-          setPlayersList(list)
-        }
-      } else {
-        alert('遊戲尚未生成，請等待 Admin 生成後再掃描')
-      }
-    } catch (error) {
-      console.error(error)
-      alert('載入遊戲失敗')
-    }
-  }
-
-  // 選擇自己後顯示角色
-  const selectPlayer = (selectedPlayer) => {
-    if (!game) return
-    const roleInfo = game.assignments.find(a => a.name === selectedPlayer.name)
-    if (roleInfo) {
-      setMyRole(roleInfo)
-    } else {
-      alert('找不到你嘅角色資料')
-    }
-  }
-
-  // 開始掃描
   const startScanning = async () => {
     try {
       setIsScanning(true)
+      setError('')
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
+        video: { facingMode: 'environment' },
       })
       streamRef.current = stream
       if (videoRef.current) {
@@ -116,140 +145,138 @@ function PlayerPanel() {
 
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const code = jsQR(imageData.data, imageData.width, imageData.height)
-
         if (code) {
-          if (code.data === 'main-room') {
-            loadGameFromFirebase('main-room')
+          const parsed = parseRoomFromQr(code.data)
+          if (parsed) {
+            setRoomInput(parsed)
+            stopScanning()
+            joinGame(parsed)
           }
-          stopScanning()
         }
-      }, 400)
-    } catch (err) {
-      alert('無法開啟相機')
-      setIsScanning(false)
+      }, 350)
+    } catch {
+      setError('無法開啟相機，請改為手動輸入房間碼')
       stopScanning()
     }
   }
 
-  const stopScanning = () => {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
+  const revealMine = () => {
+    if (!game) return
+    const mine = (game.assignments || []).find((a) => a.playerId === playerId)
+    if (mine) {
+      setMyRole(mine)
+    } else {
+      setError('你唔喺呢局嘅分配入面。可能你加入得太遲，請叫 Host 重新生成。')
     }
-    setIsScanning(false)
   }
 
-  useEffect(() => {
-    return () => stopScanning()
-  }, [])
+  if (myRole) {
+    return (
+      <RoleReveal
+        roleInfo={myRole}
+        onReset={() => setMyRole(null)}
+      />
+    )
+  }
 
   return (
     <Box sx={{ maxWidth: 480, mx: 'auto' }}>
-      {/* 標題（置中） */}
-      <Typography
-        variant="h4"
-        fontWeight={700}
-        textAlign="center"
-        gutterBottom
-        sx={{ mb: 4 }}
-      >
-        玩家查看角色
+      <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mb: 3 }}>
+        玩家入場
       </Typography>
 
-      {!myRole ? (
-        <Paper component={motion.div} whileHover={{ y: -3 }} sx={{ p: 3, borderRadius: 4 }}>
+      <Box sx={{ mb: 2 }}>
+        <HowToPlay />
+      </Box>
 
-          {/* 輸入名字 */}
-          {!hasJoined && (
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>請先輸入你嘅名字</Typography>
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <TextField
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="例如：小明"
-                  fullWidth
-                />
-                <Button variant="contained" onClick={joinGame}>
-                  加入遊戲
-                </Button>
-              </Box>
-            </Box>
-          )}
-
-          {hasJoined && (
-            <Typography variant="body2" color="success.main" sx={{ mb: 2 }}>
-              ✅ 你已成功加入遊戲（重新整理會自動離開）
+      <Paper component={motion.div} whileHover={{ y: -3 }} sx={{ p: 3, borderRadius: 4 }}>
+        {!hasJoined ? (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              輸入 Host 報嘅房間碼，或者直接掃佢個 QR。
             </Typography>
-          )}
+            <Stack spacing={2}>
+              <TextField
+                label="你嘅名字"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="例如：小明"
+                fullWidth
+              />
+              <TextField
+                label="房間碼"
+                value={roomCode}
+                onChange={(e) => setRoomInput(normalizeRoomCode(e.target.value))}
+                placeholder="例如：A7K2"
+                inputProps={{ maxLength: 8, style: { letterSpacing: '0.2em', fontWeight: 700 } }}
+                fullWidth
+              />
+              <Button variant="contained" size="large" onClick={() => joinGame()}>
+                加入遊戲
+              </Button>
+              <Button
+                variant="outlined"
+                color="success"
+                size="large"
+                onClick={isScanning ? stopScanning : startScanning}
+              >
+                {isScanning ? '停止掃描' : '掃描 QR Code'}
+              </Button>
+            </Stack>
+            {isScanning && (
+              <Box sx={{ mt: 2, borderRadius: 3, overflow: 'hidden', bgcolor: '#000' }}>
+                <video ref={videoRef} style={{ width: '100%', display: 'block' }} playsInline muted />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+              </Box>
+            )}
+          </>
+        ) : (
+          <>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              你已加入房間 <b>{roomCode}</b>
+              {playerName ? `（${playerName}）` : ''}。關閉或重新整理頁面會暫時離開。
+            </Alert>
 
-          <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" gutterBottom>
+              房間入面而家有 {playersList.length} 人
+            </Typography>
+            <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', mb: 2 }}>
+              <List dense>
+                {playersList.map((player, index) => (
+                  <ListItem key={player.id}>
+                    <ListItemText
+                      primary={`${index + 1}. ${player.name}${player.id === playerId ? '（你）' : ''}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
 
-          {/* 掃描按鈕 */}
-          <Button
-            variant="contained"
-            color="success"
-            fullWidth
-            size="large"
-            onClick={isScanning ? stopScanning : startScanning}
-            sx={{ mb: 3, py: 1.5, borderRadius: 3 }}
-          >
-            {isScanning ? '停止掃描' : '📷 掃描 QR Code'}
-          </Button>
+            <Divider sx={{ my: 2 }} />
 
-          {isScanning && (
-            <Box sx={{ mb: 3, borderRadius: 3, overflow: 'hidden', bgcolor: '#000' }}>
-              <video ref={videoRef} style={{ width: '100%', display: 'block' }} />
-              <canvas ref={canvasRef} style={{ display: 'none' }} />
-            </Box>
-          )}
-
-          {/* 玩家列表選擇 */}
-          {game && playersList.length > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>請選擇你係邊個玩家</Typography>
-              <Paper variant="outlined" sx={{ maxHeight: 250, overflow: 'auto' }}>
-                <List dense>
-                  {playersList.map((player, index) => (
-                    <ListItem key={player.id} disablePadding>
-                      <ListItemButton onClick={() => selectPlayer(player)}>
-                        <ListItemText primary={`${index + 1}. ${player.name}`} />
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
-                </List>
-              </Paper>
-            </Box>
-          )}
-
-          {/* 手動輸入短代碼 */}
-          {!game && (
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>或手動輸入短代碼</Typography>
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <TextField
-                  value={shortCode}
-                  onChange={(e) => setShortCode(e.target.value)}
-                  placeholder="輸入短代碼"
-                  fullWidth
-                />
-                <Button variant="contained" onClick={() => loadGameFromFirebase('main-room')}>
-                  載入
+            {!game ? (
+              <Typography variant="body2" color="text.secondary">
+                等 Host 揀題目同生成分配。生成之後呢度會出現「查看我嘅角色」。
+              </Typography>
+            ) : (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1.5 }}>
+                  遊戲已開始。睇之前確認隔離無人望住你個螢幕。
+                </Typography>
+                <Button variant="contained" color="success" size="large" fullWidth onClick={revealMine}>
+                  查看我嘅角色
                 </Button>
               </Box>
-            </Box>
-          )}
-        </Paper>
-      ) : (
-        <RoleReveal
-          roleInfo={myRole}
-          onReset={() => {
-            setMyRole(null)
-            setGame(null)
-            setPlayersList([])
-          }}
-        />
-      )}
+            )}
+          </>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+      </Paper>
     </Box>
   )
 }

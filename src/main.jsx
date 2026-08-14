@@ -29,6 +29,8 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: [
+      '"Noto Sans HK"',
+      '"Noto Sans TC"',
       'Roboto',
       '-apple-system',
       'BlinkMacSystemFont',
